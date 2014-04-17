@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+        xmlns:context="http://www.springframework.org/schema/context"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:util="http://www.springframework.org/schema/util"
+        xmlns:tx="http://www.springframework.org/schema/tx"
+        xsi:schemaLocation="http://www.springframework.org/schema/beans
+            http://www.springframework.org/schema/beans/spring-beans.xsd
+            http://www.springframework.org/schema/context
+            http://www.springframework.org/schema/context/spring-context.xsd
+            http://www.springframework.org/schema/util
+            http://www.springframework.org/schema/util/spring-util.xsd
+            http://www.springframework.org/schema/tx
+            http://www.springframework.org/schema/tx/spring-tx.xsd">
+            <!--http://www.springframework.org/schema/jee-->
+            <!--http://www.springframework.org/schema/jee/spring-jee.xsd">-->
+
+
+    <tx:annotation-driven/>
+
+    <!-- probably should move this to webapp ctx.  needed to autowire spring beans into jersey rest services -->
+    <context:component-scan base-package="com.hlc" />
+
+
+    <!-- beans to setup system properties for configuration -->
+    <bean id="hlc-ejb-props" class="org.springframework.beans.factory.config.PropertiesFactoryBean">
+        <property name="location" value="classpath:hlc-core.properties" />
+    </bean>
+
+    <bean class="com.hlc.service.impl.SystemPropLoader">
+        <property name="systemProperties" ref="hlc-ejb-props"/>
+    </bean>
+
+    
+    <bean id="hlcService" class="com.hlc.service.impl.HlcServiceImpl">
+        <property name="jdbcObjectDao"><ref bean="jdbcObjDao"/></property>
+        <property name="messageSender" ref="messageSender"/>
+    </bean>
+
+
+    <bean id="messageSender" class="com.hlc.service.impl.HlcMessageSender"/>
+
+    <!-- JMS XA crap -->
+    <!-- connection factory wrapper to support auto-enlisting of XA resource -->
+    <bean id="jmsXaPoolConnectionFactory" class="org.apache.activemq.pool.JcaPooledConnectionFactory" depends-on="transactionManager">
+        <property name="maxConnections" value="1" />
+        <property name="connectionFactory" ref="jmsXaConnectionFactory" />
+        <property name="transactionManager" ref="jbossTransactionManager" />
+        <property name="name" value="activemq.default" />
+    </bean>
+
+    <bean id="jmsXaConnectionFactory" class="org.apache.activemq.ActiveMQXAConnectionFactory">
+        <!--<property name="brokerURL" value="tcp://localhost:61616?jms.prefetchPolicy.all=1"/>-->
+        <property name="brokerURL" value="vm://localhost"/>
+        <property name="redeliveryPolicy">
+            <bean class="org.apache.activemq.RedeliveryPolicy">
+                <property name="maximumRedeliveries" value="0"/>
+            </bean>
+        </property>
+    </bean>
+
+    <!--
+        ActiveMQ XA Resource Manager
+    -->
+    <bean id="resourceManager" class="org.apache.activemq.pool.ActiveMQResourceManager" init-method="recoverResource" depends-on="transactionManager">
+        <property name="transactionManager" ref="jbossTransactionManager" />
+        <property name="connectionFactory" ref="jmsXaPoolConnectionFactory" />
+        <property name="resourceName" value="activemq.default" /> <!-- must match connection factory name attribute -->
+    </bean>
+
+
+
+    <!--<bean id="hlcMessageListener" class="com.hlc.service.impl.HlcMqListenerImpl">-->
+        <!--&lt;!&ndash;<property name="testMessageSender" ref ="testMessageSender" />&ndash;&gt;-->
+    <!--</bean>-->
+
+    <bean id="inQueue" class="org.apache.activemq.command.ActiveMQQueue">
+        <constructor-arg value="IN.QUEUE"/>
+    </bean>
+
+    <!--<bean id="messageListenerContainer" class="org.springframework.jms.listener.DefaultMessageListenerContainer">-->
+        <!--<property name="connectionFactory" ref ="jmsXaPoolConnectionFactory" />-->
+        <!--<property name="destination" ref ="inQueue"/>-->
+        <!--<property name="messageListener" ref ="hlcMessageListener"/>-->
+        <!--<property name="concurrentConsumers" value="2" />-->
+        <!--<property name="transactionManager" ref="transactionManager"/>-->
+    <!--</bean>-->
+
+    <!-- MessageSender is a simple POJO that we supply with a JMSTemplate and
+        the Queue that we want to send messages to
+
+    <bean id="testMessageSender" class="com.blog.spring.jms.TestMessageSender">
+        <property name="jmsTemplate" ref="jmsTemplate"/>
+        <property name="testQueue" ref="testQueueTwo"/>
+    </bean>
+    -->
+
+    <bean id="jmsTemplate" class="org.springframework.jms.core.JmsTemplate">
+        <property name="connectionFactory" ref="jmsXaPoolConnectionFactory" />
+        <property name="receiveTimeout" value="1000"/>  <!-- timeout after 1 second -->
+    </bean>
+
+
+</beans>
+
+
+
+
+	
+	
